@@ -1,6 +1,9 @@
 /*
     VistaV.fx - Balanced exposure, readability and bloom for GTA V (vanilla)
     -------------------------------------------------------------------------
+    Authors: ROSS2014 (concept, in-game testing, tuning)
+             Claude by Anthropic (shader design and implementation)
+    License: MIT
     Target: GTA V Enhanced / Legacy, SDR output, no depth buffer required.
     Designed to run first in the chain:  VistaV -> ColorMatrix -> AdaptiveSharpen
 

@@ -164,6 +164,13 @@ Rockstar 官方说明：BattlEye 与 ReShade 不兼容，**进入 GTA Online 后
 
 没有做过正式的性能测试。整个效果大约 34 个 pass，只有两个是全分辨率（曝光处理和最终合成），其余都在 1/2 到 1/128 分辨率下运行，或者只用很小的纹理。
 
+## 作者
+
+- **ROSS2014**：创意与需求、游戏内测试和调校。
+- **Claude**（Anthropic）：着色器设计与实现、文档编写。
+
+VistaV 是两人协作完成的：ROSS2014 提出问题、在游戏里测试每一个版本并把握画面风格，Claude 负责编写代码和文档。
+
 ## 致谢
 
 - 泛光下采样滤波器：Jorge Jimenez，*Next Generation Post Processing in Call of Duty: Advanced Warfare*（SIGGRAPH 2014）；Karis 平均：Brian Karis。

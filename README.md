@@ -164,6 +164,13 @@ Compiled out by default (`VISTAV_STREAK=0`). Horizontal lens streak with intensi
 
 Not formally benchmarked. The technique has about 34 passes. Only two run at full resolution (apply and final composite). The rest run at ½ to 1/128 resolution or on tiny textures.
 
+## Authors
+
+- **ROSS2014**: concept, requirements, in-game testing and tuning.
+- **Claude** (Anthropic): shader design and implementation, documentation.
+
+VistaV was built collaboratively. ROSS2014 described the problems, tested every build in game and steered the look; Claude wrote the code and docs.
+
 ## Credits
 
 - Bloom downsample filter: Jorge Jimenez, *Next Generation Post Processing in Call of Duty: Advanced Warfare* (SIGGRAPH 2014). Karis average: Brian Karis.
