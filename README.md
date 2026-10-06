@@ -38,9 +38,9 @@ The effect UI **switches language automatically**: Chinese when ReShade's UI lan
 
 The preset chain is **`VistaV → ColorMatrix → AdaptiveSharpen`**. Keep VistaV first.
 
-## GTA Online / BattlEye
+## GTA Online
 
-Rockstar states that BattlEye does not work properly with ReShade, and that ReShade is **disabled during GTA Online gameplay** ([Rockstar Support](https://support.rockstargames.com/articles/ocorZr1KpQE8WvoHE3gBG/battleye-troubleshooting-for-grand-theft-auto-v)). VistaV is therefore meant for Story Mode (including speedruns). Do not try to bypass BattlEye.
+VistaV works in both Story Mode and **GTA Online** (tested with BattlEye enabled). It does not use the depth buffer, so it is unaffected by ReShade's depth restrictions in online games. Use the standard ReShade build; the *full add-on support* build is intended for single-player only.
 
 ## How it works
 

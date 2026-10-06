@@ -38,9 +38,9 @@ VistaV 是一个为**原版 GTA V**（增强版和传承版）编写的单文件
 
 预设的效果顺序是 **`VistaV → ColorMatrix → AdaptiveSharpen`**，VistaV 必须放在最前面。
 
-## GTA Online 与 BattlEye
+## GTA Online
 
-Rockstar 官方说明：BattlEye 与 ReShade 不兼容，**进入 GTA Online 后 ReShade 会被禁用**（[Rockstar 支持页面](https://support.rockstargames.com/articles/ocorZr1KpQE8WvoHE3gBG/battleye-troubleshooting-for-grand-theft-auto-v)）。因此 VistaV 适用于故事模式（包括速通）。请不要尝试绕过 BattlEye。
+VistaV 在故事模式和 **GTA Online** 中都可以使用（已在开启 BattlEye 的情况下测试）。它不使用深度缓冲，所以不受 ReShade 在联网游戏中对深度缓冲的限制。请使用标准版 ReShade；*完整插件支持（full add-on support）* 版本只适用于单机游戏。
 
 ## 工作原理
 
