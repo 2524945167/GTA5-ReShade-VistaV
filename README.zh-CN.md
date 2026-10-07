@@ -176,13 +176,6 @@ VistaV 在故事模式和 **GTA Online** 中都可以使用（已在开启 Battl
 
 VistaV 只有两个 pass 是全分辨率（曝光处理和最终合成），其余都在 1/2 到 1/128 分辨率下运行，或者只用很小的纹理。动态模糊按模糊长度使用 4~16 个采样，低于死区的像素直接跳过。参数调好后，建议打开 ReShade 的**性能模式**，关掉的功能会在编译时被去掉。实际耗时随显卡和场景变化。
 
-## 作者
-
-- **ROSS2014**：创意与需求、游戏内测试和调校。
-- **Claude**（Anthropic）：着色器设计与实现、文档编写。
-
-VistaV 是两人协作完成的：ROSS2014 提出问题、在游戏里测试每一个版本并把握画面风格，Claude 负责编写代码和文档。
-
 ## 致谢
 
 - 泛光下采样滤波器：Jorge Jimenez，*Next Generation Post Processing in Call of Duty: Advanced Warfare*（SIGGRAPH 2014）；Karis 平均：Brian Karis。

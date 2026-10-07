@@ -176,13 +176,6 @@ Measured with ReShade's statistics page at 2560×1440 on an RTX 4070 (GTA V Enha
 
 Only two VistaV passes run at full resolution (apply and final composite); the rest run at ½ to 1/128 resolution or on tiny textures. Motion blur uses 4–16 samples depending on blur length and is skipped for pixels below the deadzone. Once tuned, enable ReShade's **Performance Mode** so disabled features are compiled out. Numbers vary with GPU and scene.
 
-## Authors
-
-- **ROSS2014**: concept, requirements, in-game testing and tuning.
-- **Claude** (Anthropic): shader design and implementation, documentation.
-
-VistaV was built collaboratively. ROSS2014 described the problems, tested every build in game and steered the look; Claude wrote the code and docs.
-
 ## Credits
 
 - Bloom downsample filter: Jorge Jimenez, *Next Generation Post Processing in Call of Duty: Advanced Warfare* (SIGGRAPH 2014). Karis average: Brian Karis.
