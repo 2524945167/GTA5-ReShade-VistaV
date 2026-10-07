@@ -340,8 +340,8 @@ uniform bool EnableMotionBlur <
     ui_category_zh = "4c. 转镜头动态模糊";
     ui_label = "Enable";
     ui_label_zh = "启用";
-    ui_tooltip = "Light directional blur that appears only while the camera turns.\nCamera motion is estimated by matching the previous frame (no depth needed).\nThe HUD region and the crosshair area are never blurred.";
-    ui_tooltip_zh = "只在转动镜头时出现的轻度方向模糊。\n通过与上一帧比对来估算镜头运动（不需要深度缓冲）。\nHUD 区域和准星附近不会被模糊。";
+    ui_tooltip = "Light directional motion blur driven by per-region motion estimation\n(160x90 blocks matched against the previous frame, no depth needed).\nThings that move with the camera - your character, your car, the HUD -\nare detected as static and stay sharp.";
+    ui_tooltip_zh = "由分块运动估算驱动的轻度方向模糊\n（画面分成 160x90 块，与上一帧比对，不需要深度缓冲）。\n跟着镜头一起动的东西——你的角色、你的车、HUD——\n会被识别为静止，保持清晰。";
 > = true;
 
 uniform float MotionBlurAmount <
@@ -352,7 +352,7 @@ uniform float MotionBlurAmount <
     ui_label_zh = "强度（快门）";
     ui_tooltip = "Blur length as a fraction of the per-frame camera movement.";
     ui_tooltip_zh = "模糊长度占每帧镜头移动距离的比例。";
-> = 0.28;
+> = 0.20;
 
 uniform float MotionDeadzone <
     ui_category = "4c. Camera Motion Blur";
@@ -380,7 +380,7 @@ uniform float MotionSmoothing <
     ui_label_zh = "时间平滑";
     ui_tooltip = "Higher = steadier blur, but it lingers slightly after the camera stops.";
     ui_tooltip_zh = "越大模糊越稳定，但镜头停下后会略微残留。";
-> = 0.4;
+> = 0.25;
 
 uniform float CenterProtect <
     ui_category = "4c. Camera Motion Blur";
@@ -388,7 +388,9 @@ uniform float CenterProtect <
     ui_type = "slider"; ui_min = 0.0; ui_max = 0.2; ui_step = 0.005;
     ui_label = "Crosshair protection radius";
     ui_label_zh = "准星保护半径";
-> = 0.03;
+    ui_tooltip = "Extra safety radius around the screen center that is never blurred.\nStatic HUD is already detected automatically.";
+    ui_tooltip_zh = "屏幕中心额外的不模糊半径。\n静止的 HUD 已经会被自动识别。";
+> = 0.015;
 #endif
 
 // ---- 5. Tone ----
@@ -585,8 +587,8 @@ uniform int DebugView <
     ui_category = "7. Debug";
     ui_category_zh = "7. 调试";
     ui_type = "combo";
-    ui_items = "Off\0Split compare (left original / right result)\0Gain heatmap\0Bloom only\0Metering mask + meters\0";
-    ui_items_zh = "关闭\0分屏对比（左原图 / 右效果）\0提亮倍数热力图\0只看泛光\0测光遮罩 + 数值条\0";
+    ui_items = "Off\0Split compare (left original / right result)\0Gain heatmap\0Bloom only\0Metering mask + meters\0Motion vectors\0";
+    ui_items_zh = "关闭\0分屏对比（左原图 / 右效果）\0提亮倍数热力图\0只看泛光\0测光遮罩 + 数值条\0运动矢量\0";
     ui_label = "Debug view";
     ui_label_zh = "调试视图";
 > = 0;
@@ -701,6 +703,23 @@ texture VV_MotionVecTex     { Width = 1; Height = 1; Format = RGBA16F; };
 sampler VV_MotionVec        { Texture = VV_MotionVecTex; MagFilter = POINT; MinFilter = POINT; MipFilter = POINT; };
 texture VV_MotionVecPrevTex { Width = 1; Height = 1; Format = RGBA16F; };
 sampler VV_MotionVecPrev    { Texture = VV_MotionVecPrevTex; MagFilter = POINT; MinFilter = POINT; MipFilter = POINT; };
+
+// Per-region motion field (1/16 res blocks matched on 1/8-res luminance)
+#define VV_FLOW_LAMBDA 0.002                 // coherence penalty per 1/8-res texel of deviation from last frame
+
+texture VV_FlowLumaTex     { Width = BUFFER_WIDTH / 8; Height = BUFFER_HEIGHT / 8; Format = R16F; };
+sampler VV_FlowLuma        { Texture = VV_FlowLumaTex; };
+texture VV_FlowLumaPrevTex { Width = BUFFER_WIDTH / 8; Height = BUFFER_HEIGHT / 8; Format = R16F; };
+sampler VV_FlowLumaPrev    { Texture = VV_FlowLumaPrevTex; };
+
+// xy = velocity (uv / frame), z = confidence, w = initialized
+texture VV_FlowRawTex  { Width = BUFFER_WIDTH / 16; Height = BUFFER_HEIGHT / 16; Format = RGBA16F; };
+sampler VV_FlowRaw     { Texture = VV_FlowRawTex; MagFilter = POINT; MinFilter = POINT; MipFilter = POINT; };
+texture VV_FlowTex     { Width = BUFFER_WIDTH / 16; Height = BUFFER_HEIGHT / 16; Format = RGBA16F; };
+sampler VV_Flow        { Texture = VV_FlowTex; };
+sampler VV_FlowPoint   { Texture = VV_FlowTex; MagFilter = POINT; MinFilter = POINT; MipFilter = POINT; };
+texture VV_FlowPrevTex { Width = BUFFER_WIDTH / 16; Height = BUFFER_HEIGHT / 16; Format = RGBA16F; };
+sampler VV_FlowPrev    { Texture = VV_FlowPrevTex; MagFilter = POINT; MinFilter = POINT; MipFilter = POINT; };
 #endif
 
 // ============================================================================
@@ -877,7 +896,7 @@ float4 PS_Apply(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
     if (EnableLocal)
     {
         localLog = clamp((log2(LocalTarget) - (localMean + gLog)) * LocalStrength, 0.0, log2(LocalMax));
-        float gp = pow(saturate(Y * gPix), 1.0 / 2.2);
+        float gp = sqrt(saturate(Y * gPix));            // ~gamma 2, mask only
         localLog *= 1.0 - smoothstep(0.15, 0.6, gp);
     }
 
@@ -888,7 +907,7 @@ float4 PS_Apply(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
         float lowContrast = saturate(1.0 - ad.g / ContrastRef);
         float amt = Clarity * (1.0 + RainBoost * lowContrast);
         float detail = clamp(logY - localMean, -1.5, 1.5);
-        float gm = pow(saturate(Y * exp2(gPixLog + localLog)), 1.0 / 2.2);
+        float gm = sqrt(saturate(Y * exp2(gPixLog + localLog)));
         float mid = smoothstep(0.03, 0.18, gm) * (1.0 - smoothstep(0.70, 0.97, gm));
         clarityLog = detail * amt * mid;
     }
@@ -1150,32 +1169,172 @@ float4 PS_MotionLumaStore(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_T
     return tex2D(VV_MotionCur, uv);
 }
 
-// Directional blur along the estimated camera motion, in linear light
+// ---- Per-region motion field ----
+
+// 1/8-res log luminance (one bilinear tap = 2x2 quarter-res texels)
+float4 PS_FlowLuma(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
+{
+    return float4(tex2Dlod(VV_Quarter, float4(uv, 0, 0)).a, 0, 0, 1);
+}
+
+// Mean truncated absolute difference of a 4x4 block (32x32 px) between this frame
+// and the previous frame displaced by v (uv units)
+float FlowCost(float2 uv, float2 v)
+{
+    float2 t = VV_TEXEL(8);
+    float s = 0.0;
+    [unroll]
+    for (int y = 0; y < 4; y++)
+    {
+        [unroll]
+        for (int x = 0; x < 4; x++)
+        {
+            float2 o = (float2(x, y) - 1.5) * t;
+            float a = tex2Dlod(VV_FlowLuma, float4(uv + o, 0, 0)).r;
+            float b = tex2Dlod(VV_FlowLumaPrev, float4(uv + o - v, 0, 0)).r;
+            s += min(abs(a - b), 1.0);
+        }
+    }
+    return s / 16.0;
+}
+
+// Candidate-based block search (3-D recursive search style):
+// predictors = zero, global camera motion, last frame's vector here and at 4 neighbors,
+// followed by +-1 and +-0.5 texel refinement around the winner.
+float4 PS_FlowSearch(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
+{
+    float2 t = VV_TEXEL(8);
+    float2 tl = VV_TEXEL(16) * 2.0;
+    float4 prev = tex2Dlod(VV_FlowPrev, float4(uv, 0, 0));
+    float2 pv = prev.w > 0.5 ? prev.xy : float2(0, 0);
+    float2 gv = tex2Dlod(VV_MotionVec, float4(0.5, 0.5, 0, 0)).xy;
+
+    float2 cands[7];
+    cands[0] = float2(0, 0);
+    cands[1] = gv;
+    cands[2] = pv;
+    cands[3] = tex2Dlod(VV_FlowPrev, float4(uv + float2(-tl.x, 0), 0, 0)).xy;
+    cands[4] = tex2Dlod(VV_FlowPrev, float4(uv + float2( tl.x, 0), 0, 0)).xy;
+    cands[5] = tex2Dlod(VV_FlowPrev, float4(uv + float2(0, -tl.y), 0, 0)).xy;
+    cands[6] = tex2Dlod(VV_FlowPrev, float4(uv + float2(0,  tl.y), 0, 0)).xy;
+
+    float zeroCost = FlowCost(uv, float2(0, 0));
+    float2 best = float2(0, 0);
+    float bestRaw = zeroCost;
+    float bestCost = zeroCost + VV_FLOW_LAMBDA * length(pv / t);
+
+    [loop]
+    for (int i = 1; i < 7; i++)
+    {
+        float raw = FlowCost(uv, cands[i]);
+        float cost = raw + VV_FLOW_LAMBDA * length((cands[i] - pv) / t);
+        if (cost < bestCost) { bestCost = cost; bestRaw = raw; best = cands[i]; }
+    }
+
+    // Two refinement rings: 1 texel, then 0.5 texel
+    [loop]
+    for (int r = 0; r < 2; r++)
+    {
+        float stepSize = r == 0 ? 1.0 : 0.5;
+        float2 center = best;
+        [unroll]
+        for (int k = 0; k < 8; k++)
+        {
+            float a = k * 0.78539816;
+            float2 d = round(float2(cos(a), sin(a))) * stepSize * t;
+            float raw = FlowCost(uv, center + d);
+            float cost = raw + VV_FLOW_LAMBDA * length((center + d - pv) / t);
+            if (cost < bestCost) { bestCost = cost; bestRaw = raw; best = center + d; }
+        }
+    }
+
+    // Confidence: how much better the match is than "nothing moved".
+    // Featureless blocks (sky, flat walls) get none, which is invisible anyway.
+    float conf = saturate((zeroCost - bestRaw) / max(zeroCost, 0.01) * 4.0);
+    conf *= smoothstep(0.005, 0.02, zeroCost);
+    return float4(best, conf, 1.0);
+}
+
+// 3x3 vector median (keeps object boundaries crisp, removes outliers) + light temporal smoothing
+float4 PS_FlowFilter(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
+{
+    float2 t = VV_TEXEL(16);
+    float4 s[9];
+    [unroll]
+    for (int j = 0; j < 3; j++)
+    {
+        [unroll]
+        for (int i = 0; i < 3; i++)
+            s[j * 3 + i] = tex2Dlod(VV_FlowRaw, float4(uv + float2(i - 1, j - 1) * t, 0, 0));
+    }
+
+    float4 med = s[4];
+    float bestD = 1e6;
+    [unroll]
+    for (int a = 0; a < 9; a++)
+    {
+        float d = 0.0;
+        [unroll]
+        for (int b = 0; b < 9; b++)
+            d += length((s[a].xy - s[b].xy) * BUFFER_SCREEN_SIZE);
+        if (d < bestD) { bestD = d; med = s[a]; }
+    }
+
+    float4 prev = tex2Dlod(VV_FlowPrev, float4(uv, 0, 0));
+    float k = prev.w > 0.5 ? MotionSmoothing : 0.0;
+    return float4(lerp(med.xyz, prev.xyz, k), 1.0);
+}
+
+float4 PS_FlowStore(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
+{
+    return tex2Dlod(VV_FlowPoint, float4(uv, 0, 0));
+}
+
+float4 PS_FlowLumaStore(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
+{
+    return tex2Dlod(VV_FlowLuma, float4(uv, 0, 0));
+}
+
+float InterleavedGradientNoise(float2 p)
+{
+    return frac(52.9829189 * frac(dot(p, float2(0.06711056, 0.00583715))));
+}
+
+// Per-pixel directional blur along the local motion vector, in linear light.
+// Samples are only gathered from pixels that move like this one, so static-on-screen
+// objects (character, own car, HUD) neither get blurred nor smear into the background.
 float3 CameraMotionBlur(float2 vpos, float2 uv, float3 c, float hud)
 {
     float3 result = c;
-    float4 mv = tex2Dlod(VV_MotionVec, float4(0.5, 0.5, 0, 0));
-    float2 vpx = mv.xy * BUFFER_SCREEN_SIZE;            // pixels per frame
+    float4 f = tex2Dlod(VV_Flow, float4(uv, 0, 0));
+    float2 vpx = f.xy * BUFFER_SCREEN_SIZE;              // pixels per frame
     float speed = length(vpx);
 
     float2 cd = (uv - 0.5) * float2(BUFFER_ASPECT_RATIO, 1.0);
     float protect = max(hud, 1.0 - smoothstep(CenterProtect, CenterProtect * 1.6 + 1e-4, length(cd)));
     float len = min(max(speed - MotionDeadzone, 0.0) * MotionBlurAmount, MotionMaxLength);
-    len *= mv.z * (1.0 - protect) * (EnableMotionBlur ? 1.0 : 0.0);
+    len *= saturate(f.z) * (1.0 - protect) * (EnableMotionBlur ? 1.0 : 0.0);
 
     [branch]
     if (len > 1.0)
     {
         float2 extent = vpx / max(speed, 1e-4) * len * BUFFER_PIXEL_SIZE;
-        float jitter = Hash(vpos + 0.5) - 0.5;          // hides sample stepping
-        float3 acc = 0;
-        [unroll]
-        for (int i = 0; i < 12; i++)
+        int taps = (int)clamp(ceil(len / 2.5), 4.0, 16.0);  // fewer taps for short blurs
+        float jitter = InterleavedGradientNoise(vpos) - 0.5;
+        float tol = 0.5 * speed + 2.0;
+
+        float3 acc = c;
+        float wsum = 1.0;
+        [loop]
+        for (int i = 0; i < taps; i++)
         {
-            float t = (i + 0.5 + jitter) / 12.0 - 0.5;
-            acc += tex2Dlod(VV_Scene, float4(uv + extent * t, 0, 0)).rgb;
+            float2 suv = uv + extent * (((float)i + 0.5 + jitter) / (float)taps - 0.5);
+            float2 sv = tex2Dlod(VV_FlowPoint, float4(suv, 0, 0)).xy * BUFFER_SCREEN_SIZE;
+            float w = saturate(1.0 - length(sv - vpx) / tol) * (1.0 - HudMask(suv));
+            acc += tex2Dlod(VV_Scene, float4(suv, 0, 0)).rgb * w;
+            wsum += w;
         }
-        result = acc / 12.0;
+        result = acc / wsum;
     }
     return result;
 }
@@ -1349,6 +1508,20 @@ float4 PS_Final(float4 pos : SV_Position, float2 uv : TEXCOORD) : SV_Target
             if (row < 0.5 && abs(fx - 0.25) < 0.003) g = float3(1, 0, 0);
         }
     }
+    else if (DebugView == 5)
+    {
+#if VISTAV_MOTIONBLUR
+        // Hue = direction, saturation = speed (full at 48 px/frame), dimmed by confidence
+        float4 f = tex2Dlod(VV_Flow, float4(uv, 0, 0));
+        float2 v = f.xy * BUFFER_SCREEN_SIZE;
+        float sp = saturate(length(v) / 48.0) * saturate(f.z);
+        float hueT = atan2(v.y, v.x) / 6.2831853 + 0.5;
+        float3 hue = saturate(abs(frac(hueT + float3(0.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0) - 1.0);
+        g = lerp(Luma(orig).xxx * 0.5, hue, sp);
+#else
+        g = orig;
+#endif
+    }
 
     // Triangular dither: hides banding introduced by shadow lifting
     float fc = (float)FrameCount;
@@ -1397,6 +1570,11 @@ technique VistaV <
     pass MotionLuma      { VertexShader = PostProcessVS; PixelShader = PS_MotionLuma;      RenderTarget = VV_MotionCurTex; }
     pass MotionSAD       { VertexShader = PostProcessVS; PixelShader = PS_MotionSAD;       RenderTarget = VV_SADTex; }
     pass MotionPick      { VertexShader = PostProcessVS; PixelShader = PS_MotionPick;      RenderTarget = VV_MotionVecTex; }
+    pass FlowLuma        { VertexShader = PostProcessVS; PixelShader = PS_FlowLuma;        RenderTarget = VV_FlowLumaTex; }
+    pass FlowSearch      { VertexShader = PostProcessVS; PixelShader = PS_FlowSearch;      RenderTarget = VV_FlowRawTex; }
+    pass FlowFilter      { VertexShader = PostProcessVS; PixelShader = PS_FlowFilter;      RenderTarget = VV_FlowTex; }
+    pass FlowStore       { VertexShader = PostProcessVS; PixelShader = PS_FlowStore;       RenderTarget = VV_FlowPrevTex; }
+    pass FlowLumaStore   { VertexShader = PostProcessVS; PixelShader = PS_FlowLumaStore;   RenderTarget = VV_FlowLumaPrevTex; }
     pass MotionVecStore  { VertexShader = PostProcessVS; PixelShader = PS_MotionVecStore;  RenderTarget = VV_MotionVecPrevTex; }
     pass MotionLumaStore { VertexShader = PostProcessVS; PixelShader = PS_MotionLumaStore; RenderTarget = VV_MotionPrevTex; }
 #endif

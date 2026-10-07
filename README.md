@@ -11,11 +11,11 @@ It needs **no depth buffer** and **no game mods**. Everything is computed from t
 | Problem in vanilla GTA V | What VistaV does |
 |---|---|
 | One bright light (headlights, a street lamp) makes the game's eye adaptation darken the whole frame | **Anti eye-adaptation.** Background luminance is metered with light sources excluded. When the game over-darkens, exposure is compensated back through a highlight-preserving curve, so shadows are lifted while headlights and lit surfaces stay near their original level. |
-| Rainy nights are dark, flat and hard to read | **Local shadow lift** raises only dark regions, and light sources are excluded so there are no dark halos around lamps. **Adaptive clarity** adds large-radius local contrast and strengthens automatically when the frame is flat (rain, fog, night). |
+| Nights (and rain) are dark, flat and hard to read | **Local shadow lift** raises only dark regions, and light sources are excluded so there are no dark halos around lamps. **Adaptive clarity** adds large-radius local contrast and strengthens automatically when the frame is flat (rain, fog, night). |
 | Bloom either looks flat or washes the screen white | **Bloom pyramid**: 13-tap downsample, Karis average to stop rain sparkle flicker, soft threshold, a daytime-adaptive threshold, haze suppression, and night glare reduction. |
 | Headlights at night are blinding | **Night glare reduction** dims only the brightest pixels at night and fades out during the day. |
-| Notification text above the minimap looks soft | **HUD region**: the minimap and notification feed never glow and are excluded from metering. Text edges get halo-free crispening, and the region's tone matches the rest of the screen exactly, so there is no visible patch. |
-| Camera turns feel static | **Camera motion blur** (optional). Global camera motion is estimated by block-matching the previous frame, and a light directional blur is applied only while the camera turns. It has a deadzone, a confidence gate, and protection for the HUD and crosshair. |
+| Post-processing makes HUD text glow or skews metering | **HUD region**: the minimap and notification feed never glow and are excluded from metering. Text edges get halo-free crispening, and the region's tone matches the rest of the screen exactly, so there is no visible patch. |
+| Camera turns feel static | **Motion blur** (optional). A per-region motion field (160×90 blocks matched against the previous frame) drives a light directional blur. Things that move with the camera — your character, your car, the HUD — are detected as static and stay sharp. |
 
 The effect UI **switches language automatically**: Chinese when ReShade's UI language is Chinese, English otherwise. This uses ReShade's built-in localized annotations (`ui_label_zh`, `ui_tooltip_zh`, ...).
 
@@ -52,7 +52,7 @@ All processing happens in linear light with 16-bit intermediate textures, so lif
 4. **Local shadow lift.** A 1/16-resolution, Gaussian-blurred, highlight-excluded local background drives an extra lift for dark pixels only. Because light sources are excluded from the local mean, lamps do not get dark rings.
 5. **Clarity.** The pixel's log deviation from the same local background is amplified for mid-tones. The amount rises when the measured frame contrast is low.
 6. **Bloom.** Pseudo-HDR expansion of near-white pixels, a 13-tap prefilter with Karis average, soft-knee threshold scaled by a daylight factor, 7-level pyramid with tent upsampling, haze suppression `b·Y/(Y+h)`, and night scaling.
-7. **Camera motion blur.** 1/32-resolution luminance of the current and previous frame. 169 candidate shifts (±6 texels) are scored in parallel as 8×8 tiles and reduced by mip level 3. The best shift is refined with a parabola fit and gated by a confidence measure (best vs. mean cost; featureless frames get none). A 12-tap jittered linear blur follows the estimated motion.
+7. **Motion blur.** A coarse global camera vector is estimated first: 1/32-res luminance, 169 candidate shifts scored in parallel and reduced by mip level 3, refined with a parabola fit. Then a **per-region motion field** is built at 1/16 resolution with a candidate search on 1/8-res luminance, in the style of 3-D recursive search. Each block tests zero, the global vector, and last frame's vectors at itself and 4 neighbors, followed by ±1 and ±0.5 texel refinement, with a small temporal coherence penalty. A 3×3 vector median removes outliers while keeping object boundaries. The blur gathers 4–16 jittered samples along the local vector, and **only samples that move like the center pixel are accepted**, so static-on-screen objects neither blur nor smear into the background.
 8. **Tone.** White balance, an exponential shoulder, a night peak dimmer, shadows/highlights, a gentle S-curve with shadow protection, vibrance/saturation, split toning, output levels, an optional vignette, and triangular dither.
 
 ## Parameters
@@ -103,11 +103,11 @@ Compiled out by default (`VISTAV_STREAK=0`). Horizontal lens streak with intensi
 ### 4c. Camera Motion Blur
 | Parameter | Default | Description |
 |---|---|---|
-| Amount (shutter) | 0.28 | Blur length as a fraction of per-frame camera movement. |
+| Amount (shutter) | 0.20 | Blur length as a fraction of per-frame movement. |
 | Deadzone | 6 px/frame | Slower motion produces no blur. |
 | Max blur length | 40 px | |
-| Temporal smoothing | 0.4 | Steadier vs. more responsive. |
-| Crosshair protection radius | 0.03 | Screen center is never blurred. |
+| Temporal smoothing | 0.25 | Steadier vs. more responsive. |
+| Crosshair protection radius | 0.015 | Extra safety radius at the screen center (static HUD is already detected). |
 
 ### 5. Tone
 | Parameter | Default | Description |
@@ -133,7 +133,8 @@ Compiled out by default (`VISTAV_STREAK=0`). Horizontal lens streak with intensi
 - **Split compare**: left original, right result.
 - **Gain heatmap**: total exposure change per pixel (blue = darkened, green = unchanged, red = brightened, ±2.5 stops).
 - **Bloom only**.
-- **Metering mask + meters**: blue = highlights excluded from metering, red = HUD region. Meters in the top-left show global gain (red tick = 1×), frame contrast, daylight factor, motion confidence and camera speed.
+- **Metering mask + meters**: blue = highlights excluded from metering, red = HUD region. Meters in the top-left show global gain (red tick = 1×), frame contrast, daylight factor, global motion confidence and camera speed.
+- **Motion vectors**: hue = direction, saturation = speed (full at 48 px/frame), dimmed by confidence.
 
 ### Preprocessor definitions
 | Define | Default | Effect |
@@ -145,24 +146,35 @@ Compiled out by default (`VISTAV_STREAK=0`). Horizontal lens streak with intensi
 
 `presets/VistaV_Comfort.ini` sets the chain and these values for the companion effects:
 
-- **ColorMatrix**: `Red (0.80, 0.18, 0.00)`, `Green (0.335, 0.67, 0.00)`, `Blue (0.15, 0.07, 0.87)`, strength 0.58. This mixes some red into green to neutralize GTA's yellow-green cast.
+- **ColorMatrix**: `Red (0.80, 0.18, 0.00)`, `Green (0.335, 0.67, 0.00)`, `Blue (0.15, 0.07, 0.87)`, strength 1.0. This mixes some red into green to neutralize GTA's yellow-green cast. Make sure only **one** `ColorMatrix.fx` exists under `reshade-shaders\Shaders` — some installs ship a duplicate in the root folder and in `SweetFX\`, which makes ReShade run it twice.
 - **AdaptiveSharpen**: strength 0.15, with reduced overshoot (`D_overshoot 0.006`, `scale_lim 0.07`) so it does not glare.
 
 ## Recommended in-game settings
 
 - Keep in-game brightness at default and let VistaV handle exposure.
-- If notification text looks smeared, try disabling **frame generation**. Interpolated frames often smear sliding or fading HUD text.
 - If the image feels harsh, lower the **DLSS / FSR sharpening** in the game (for example 0.2–0.3). It stacks with AdaptiveSharpen.
+- **Frame generation:** generated frames may not pass through ReShade, so processed and unprocessed frames can alternate. If you see flicker (especially in recordings), test with frame generation off, or use a driver-level option such as NVIDIA Smooth Motion instead.
 
 ## Troubleshooting
 
 - **Effect fails to compile:** check `ReShade.log` in the game folder and open an issue with the error line.
 - **HUD region looks wrong:** adjust *Region top-left / bottom-right* using the *Metering mask + meters* debug view. The defaults assume 16:9 and the default HUD safe zone.
 - **Motion blur triggers when it should not:** raise *Deadzone* or lower *Amount*. Featureless scenes such as open sky are ignored by design.
+- **Recording flickers in OBS:** OBS *Game Capture* and ReShade both hook the game's present call, which can make the capture alternate between processed and unprocessed frames ([obs-studio#11250](https://github.com/obsproject/obs-studio/issues/11250)). Use *Display Capture* instead, or the NVIDIA App recorder.
+- **Colors look doubled or too strong:** make sure only one `ColorMatrix.fx` exists under `reshade-shaders\Shaders`.
 
 ## Performance
 
-Not formally benchmarked. The technique has about 34 passes. Only two run at full resolution (apply and final composite). The rest run at ½ to 1/128 resolution or on tiny textures.
+Measured with ReShade's statistics page at 2560×1440 on an RTX 4070 (GTA V Enhanced, full `VistaV_Comfort` preset, 169 fps):
+
+| Effect | GPU time |
+|---|---|
+| VistaV (32 passes) | ≈ 1.27 ms |
+| ColorMatrix | ≈ 0.09 ms |
+| AdaptiveSharpen | ≈ 1.01 ms |
+| Whole chain | ≈ 2.36 ms |
+
+Only two VistaV passes run at full resolution (apply and final composite); the rest run at ½ to 1/128 resolution or on tiny textures. Motion blur uses 4–16 samples depending on blur length and is skipped for pixels below the deadzone. Once tuned, enable ReShade's **Performance Mode** so disabled features are compiled out. Numbers vary with GPU and scene.
 
 ## Authors
 

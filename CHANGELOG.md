@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.1.0 — 2026-10-07
+
+### Motion blur rewrite
+- Replaced the single global camera vector with a **per-region motion field**: 160×90 blocks at 1440p, candidate search (zero, global, temporal and spatial predictors, ±1 and ±0.5 texel refinement), and a 3×3 vector median.
+- Blur gathers only samples that move like the center pixel. Your character, your car and the HUD stay sharp while the background blurs.
+- Adaptive sample count (4–16) and interleaved-gradient jitter.
+- New **Motion vectors** debug view.
+- Defaults: amount 0.20, temporal smoothing 0.25, crosshair radius 0.015.
+
+### Other
+- Cheaper perceptual masks in the exposure pass.
+- Preset: ColorMatrix strength 1.0. The previous look came from a duplicate `ColorMatrix.fx` running twice at 0.58, which is nearly equivalent to one pass at 1.0.
+
+### Docs
+- Measured performance added (RTX 4070, 1440p: VistaV ≈ 1.27 ms, whole chain ≈ 2.36 ms).
+- GTA Online section corrected: ReShade works online with BattlEye enabled.
+- Troubleshooting for OBS Game Capture flicker, frame generation, and duplicate `ColorMatrix.fx`.
+- The soft notification text seen during development was caused by early VistaV builds, not by the game; the HUD row in the feature table was reworded accordingly.
+
 ## 1.0.0 — 2026-10-06
 
 First public release. This version was developed iteratively, with every build tested in GTA V Enhanced (ReShade 6.8.0, DX12, 2560×1440 SDR).
